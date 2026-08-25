@@ -1,5 +1,5 @@
 const express = require('express');
-const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
@@ -12,22 +12,31 @@ const app = express();
 const PORT = process.env.PORT || 5005;
 
 // Middleware
-app.use(cors({
-  origin: 'http://localhost:3000', // Frontend URL
-  credentials: true,
-}));
 app.use(express.json());
 
-// Routes
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, '../public')));
+
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/donations', donationRoutes);
 app.use('/api/ngo', ngoRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Simple Health Check
+// Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Charity API is running smoothly' });
+});
+
+// Serve frontend for all other routes (SPA fallback)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/.next/standalone/index.html'), (err) => {
+    if (err) {
+      // Fallback if .next doesn't exist
+      res.sendFile(path.join(__dirname, '../public/index.html'));
+    }
+  });
 });
 
 // Error handling middleware
@@ -37,5 +46,6 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Backend Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
+
