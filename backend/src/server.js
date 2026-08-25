@@ -11,9 +11,17 @@ const adminRoutes = require('./routes/adminRoutes');
 const app = express();
 const PORT = process.env.PORT || 5005;
 
+// Determine CORS origin based on environment
+const getCorsOrigin = () => {
+  if (process.env.NODE_ENV === 'production' && process.env.CORS_ORIGIN) {
+    return `https://${process.env.CORS_ORIGIN}`;
+  }
+  return 'http://localhost:3000'; // Local development
+};
+
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3000', // Frontend URL
+  origin: getCorsOrigin(),
   credentials: true,
 }));
 app.use(express.json());
@@ -39,3 +47,4 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Backend Server is running on port ${PORT}`);
 });
+
