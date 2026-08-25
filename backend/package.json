@@ -6,7 +6,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "db:setup": "prisma db push && prisma db seed",
-    "build": "npm install --prefix ../frontend && npm run build --prefix ../frontend && cp -r ../frontend/.next ./public/frontend && cp -r ../frontend/public/* ./public/frontend/public/ 2>/dev/null || true"
+    "build": "cd ../frontend && npm install && npm run build && cd ../backend && mkdir -p public && cp -r ../frontend/.next public/ && cp -r ../frontend/public/* public/ 2>/dev/null || true"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

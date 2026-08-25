@@ -13,6 +13,8 @@ const PORT = process.env.PORT || 5005;
 
 // Middleware
 app.use(express.json());
+
+// Serve static files from public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
 // API Routes
@@ -29,7 +31,12 @@ app.get('/api/health', (req, res) => {
 
 // Serve frontend for all other routes (SPA fallback)
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/frontend/index.html'));
+  res.sendFile(path.join(__dirname, '../public/.next/standalone/index.html'), (err) => {
+    if (err) {
+      // Fallback if .next doesn't exist
+      res.sendFile(path.join(__dirname, '../public/index.html'));
+    }
+  });
 });
 
 // Error handling middleware
