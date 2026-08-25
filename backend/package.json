@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "db:setup": "prisma db push && prisma db seed"
+    "db:setup": "prisma db push && prisma db seed",
+    "build": "npm install --prefix ../frontend && npm run build --prefix ../frontend && cp -r ../frontend/.next ./public/frontend && cp -r ../frontend/public/* ./public/frontend/public/ 2>/dev/null || true"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -23,3 +24,4 @@
     "prisma": "^5.10.2"
   }
 }
+
