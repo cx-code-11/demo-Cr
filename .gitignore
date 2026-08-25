@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Next.js Build Output
+.next/
+**/.next/
+
+# Local databases & logs
+*.log
+*.db
+backend/prisma/*.db
+backend/prisma/dev.db
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env*

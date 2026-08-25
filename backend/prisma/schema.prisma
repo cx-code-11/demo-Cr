@@ -1,0 +1,79 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   // "DONOR", "NGO", "ADMIN"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // NGO relation
+  ngoProfile NgoProfile?
+
+  // Donor relations
+  donations Donation[]
+}
+
+model NgoProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  description String
+  status      String   // "PENDING", "APPROVED", "REJECTED"
+  documentUrl String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaigns   Campaign[]
+  payouts     Payout[]
+}
+
+model Campaign {
+  id          String   @id @default(uuid())
+  ngoId       String
+  ngo         NgoProfile @relation(fields: [ngoId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  target      Float
+  raised      Float    @default(0)
+  status      String   // "ACTIVE", "PAUSED", "COMPLETED"
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  donations   Donation[]
+}
+
+model Donation {
+  id         String   @id @default(uuid())
+  amount     Float
+  currency   String   // "USD", "EUR", "GBP", "INR"
+  status     String   // "PENDING", "COMPLETED", "FAILED"
+  frequency  String   // "ONE_TIME", "MONTHLY"
+  donorId    String?
+  donor      User?    @relation(fields: [donorId], references: [id], onDelete: SetNull)
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  donorName  String
+  stripeId   String?  // Simulated payment processing ID
+  createdAt  DateTime @default(now())
+}
+
+model Payout {
+  id          String   @id @default(uuid())
+  ngoId       String
+  ngo         NgoProfile @relation(fields: [ngoId], references: [id], onDelete: Cascade)
+  amount      Float
+  status      String   // "PENDING", "COMPLETED", "REJECTED"
+  bankAccount String
+  createdAt   DateTime @default(now())
+}
