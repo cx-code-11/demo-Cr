@@ -1,51 +1,19 @@
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
   provider = "prisma-client-js"
 }
 
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      String   // "DONOR", "NGO", "ADMIN"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // NGO relation
-  ngoProfile NgoProfile?
-
-  // Donor relations
-  donations Donation[]
-}
-
-model NgoProfile {
-  id          String   @id @default(uuid())
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  description String
-  status      String   // "PENDING", "APPROVED", "REJECTED"
-  documentUrl String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  campaigns   Campaign[]
-  payouts     Payout[]
-}
-
 model Campaign {
   id          String   @id @default(uuid())
-  ngoId       String
-  ngo         NgoProfile @relation(fields: [ngoId], references: [id], onDelete: Cascade)
   title       String
   description String
   target      Float
   raised      Float    @default(0)
-  status      String   // "ACTIVE", "PAUSED", "COMPLETED"
+  status      String   @default("ACTIVE") // "ACTIVE", "PAUSED", "COMPLETED"
   imageUrl    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -54,26 +22,30 @@ model Campaign {
 }
 
 model Donation {
-  id         String   @id @default(uuid())
-  amount     Float
-  currency   String   // "USD", "EUR", "GBP", "INR"
-  status     String   // "PENDING", "COMPLETED", "FAILED"
-  frequency  String   // "ONE_TIME", "MONTHLY"
-  donorId    String?
-  donor      User?    @relation(fields: [donorId], references: [id], onDelete: SetNull)
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  donorName  String
-  stripeId   String?  // Simulated payment processing ID
-  createdAt  DateTime @default(now())
-}
+  id               String   @id @default(uuid())
 
-model Payout {
-  id          String   @id @default(uuid())
-  ngoId       String
-  ngo         NgoProfile @relation(fields: [ngoId], references: [id], onDelete: Cascade)
-  amount      Float
-  status      String   // "PENDING", "COMPLETED", "REJECTED"
-  bankAccount String
-  createdAt   DateTime @default(now())
+  // Donor info
+  donorName        String
+  donorEmail       String?
+
+  // NOWPayments identifiers
+  nowPaymentsId    String?  @unique  // payment_id — used for idempotency
+  invoiceId        String?           // NOWPayments invoice_id
+
+  // Payment amounts
+  usdAmount        Float             // amount in USD (requested)
+  originalAmount   Float?            // amount user actually paid (in their currency)
+  originalCurrency String?           // currency user paid in (btc, eth, usd, etc.)
+
+  // Payment metadata
+  paymentMethod    String?           // e.g. "btc", "eth", "usdtbsc", "card"
+  paymentStatus    String   @default("WAITING")
+  // WAITING | CONFIRMING | CONFIRMED | SENDING | FINISHED | PARTIALLY_PAID | FAILED | EXPIRED | REFUNDED
+
+  // Optional campaign link
+  campaignId       String?
+  campaign         Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
