@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const prisma = require('../prismaClient');
+const { processDonationSettlement, calculateSettlement } = require('../services/settlementService');
 
 const IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET;
 
@@ -116,8 +117,16 @@ exports.handleWebhook = async (req, res) => {
       });
 
       console.log(`[WEBHOOK] Donation ${updated.id} updated to ${mappedStatus}`);
+
+      // Auto-trigger settlement on successful payment
+      if (['FINISHED', 'CONFIRMED'].includes(mappedStatus)) {
+        await processDonationSettlement(updated.id);
+      }
     } else {
       // Direct payment from widget without pre-created invoice
+      const { fee, net } = calculateSettlement(calculatedUsdAmount, 'M0');
+      const isSuccess = ['FINISHED', 'CONFIRMED'].includes(mappedStatus);
+
       const created = await prisma.donation.create({
         data: {
           donorName: 'Anonymous Donor',
@@ -127,10 +136,30 @@ exports.handleWebhook = async (req, res) => {
           originalCurrency: pay_currency || null,
           paymentMethod: pay_currency || null,
           paymentStatus: mappedStatus,
+          settlementType: 'M0',
+          settlementStatus: isSuccess ? 'SETTLED' : 'PENDING',
+          feeAmount: isSuccess ? fee : 0,
+          netSettlementAmount: isSuccess ? net : 0,
+          settledAt: isSuccess ? new Date() : null,
         },
       });
 
       console.log(`[WEBHOOK] New direct donation created from widget: ${created.id} ($${calculatedUsdAmount}) [${mappedStatus}]`);
+
+      if (isSuccess) {
+        await prisma.settlementLog.create({
+          data: {
+            donationId: created.id,
+            fromStatus: 'PENDING',
+            toStatus: 'SETTLED',
+            settlementType: 'M0',
+            amount: calculatedUsdAmount,
+            fee,
+            netAmount: net,
+            notes: 'Direct widget payment instant M0 settlement.',
+          },
+        });
+      }
     }
 
   } catch (err) {
