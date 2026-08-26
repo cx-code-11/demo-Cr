@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Heart } from 'lucide-react';
+import Link from 'next/link';
+import { Heart, Smartphone } from 'lucide-react';
 import DonationModal from './DonationModal';
 
 export default function Navbar() {
@@ -24,27 +25,45 @@ export default function Navbar() {
           alignItems: 'center'
         }}>
           {/* Logo */}
-          <div style={{
+          <Link href="/" style={{
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
             color: 'var(--text-primary)',
             fontSize: '1.4rem',
-            fontWeight: 800
+            fontWeight: 800,
+            textDecoration: 'none',
           }}>
             <Heart size={24} color="#3b82f6" fill="#3b82f6" />
             <span>Trust<span className="gradient-text">Aid</span></span>
-          </div>
+          </Link>
 
-          {/* Donate Button */}
-          <button
-            id="donate-btn"
-            onClick={() => setModalOpen(true)}
-            className="btn btn-primary"
-            style={{ padding: '0.6rem 1.5rem', fontSize: '0.95rem' }}
-          >
-            Donate
-          </button>
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Link
+              href="/pos"
+              className="btn btn-secondary"
+              style={{
+                padding: '0.55rem 1.1rem',
+                fontSize: '0.88rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+            >
+              <Smartphone size={15} color="#38bdf8" />
+              <span>Web POS</span>
+            </Link>
+
+            <button
+              id="donate-btn"
+              onClick={() => setModalOpen(true)}
+              className="btn btn-primary"
+              style={{ padding: '0.55rem 1.3rem', fontSize: '0.88rem' }}
+            >
+              Donate
+            </button>
+          </div>
         </div>
       </nav>
 
