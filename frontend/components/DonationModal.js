@@ -59,7 +59,7 @@ export default function DonationModal({ isOpen, onClose }) {
           padding: '0.5rem',
         }}>
           <iframe
-            src="https://nowpayments.io/embeds/donation-widget?api_key=037862fb-9c69-4d18-8e4c-9aeb618d3482"
+            src="https://nowpayments.io/embeds/donation-widget?api_key=77JW23M-9Q944MQ-K30WB10-5EH3WGB"
             style={{
               width: '100%', maxWidth: '346px',
               height: '630px', border: 'none', overflowY: 'hidden',
