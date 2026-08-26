@@ -2,15 +2,25 @@
 
 import { useState } from 'react';
 import {
-  X, CreditCard, Coins, Heart, Loader2,
-  ChevronRight, ArrowRight, ShieldCheck, ExternalLink, Zap
+  X, Coins, Heart, Loader2,
+  ChevronRight, ArrowRight, ShieldCheck, ExternalLink, CheckCircle2
 } from 'lucide-react';
 
-const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/3cI4gAbkSgeyb2y8mzfrW0l';
+const PAYPAL_PAYMENT_LINK = 'https://paypal.me/aramtrustmain';
+
+function PayPalIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+      <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 3.72a.641.641 0 0 1 .632-.542h7.027c3.486 0 5.86 1.764 5.378 5.122-.43 2.996-2.585 4.67-5.597 4.67H9.288l-1.464 7.827a.641.641 0 0 1-.632.54h-.116z" fill="#003087"/>
+      <path d="M9.288 12.97h3.096c3.012 0 5.167-1.674 5.597-4.67.482-3.358-1.892-5.122-5.378-5.122H5.576a.641.641 0 0 0-.632.542L2.838 17.065a.64.64 0 0 0 .633.732h3.693l1.464-7.827h.66z" fill="#0079C1" opacity="0.95"/>
+      <path d="M8.29 17.797l1.098-6.867h3.096c2.72 0 4.693-1.364 5.253-3.955.19 1.134.025 2.378-.585 3.328-1.028 1.6-2.906 2.164-5.304 2.164H9.728l-1.096 5.86a.641.641 0 0 1-.632.54h-.01a.64.64 0 0 1-.63-.734l.93-4.336z" fill="#00457C"/>
+    </svg>
+  );
+}
 
 export default function DonationModal({ isOpen, onClose }) {
-  // Method: 'card' (Stripe: Apple Pay, Google Pay, Cards) vs 'crypto' (NOWPayments)
-  const [method, setMethod] = useState('card');
+  // Method: 'paypal' | 'crypto'
+  const [method, setMethod] = useState('paypal');
 
   if (!isOpen) return null;
 
@@ -23,7 +33,7 @@ export default function DonationModal({ isOpen, onClose }) {
       zIndex: 1000, padding: '1rem',
     }}>
       <div style={{
-        width: '100%', maxWidth: '460px', maxHeight: '95vh', overflowY: 'auto',
+        width: '100%', maxWidth: '480px', maxHeight: '95vh', overflowY: 'auto',
         position: 'relative',
         background: 'var(--bg-secondary)',
         border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -59,11 +69,11 @@ export default function DonationModal({ isOpen, onClose }) {
           </div>
           <h2 style={{ fontSize: '1.6rem', fontWeight: 800, margin: 0 }}>Support TrustAid</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.3rem' }}>
-            Instant checkout with Apple Pay, Google Pay, Cards &amp; Crypto
+            Instant checkout with PayPal &amp; Crypto
           </p>
         </div>
 
-        {/* Method Selector Tabs: Card/Wallets vs Crypto */}
+        {/* Method Selector Tabs: PayPal vs Crypto */}
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem',
           background: 'rgba(255,255,255,0.03)', padding: '0.3rem',
@@ -71,94 +81,112 @@ export default function DonationModal({ isOpen, onClose }) {
         }}>
           <button
             type="button"
-            onClick={() => setMethod('card')}
+            onClick={() => setMethod('paypal')}
             style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
-              padding: '0.65rem 0.5rem', borderRadius: '9px', border: 'none',
-              background: method === 'card' ? 'var(--accent-primary)' : 'transparent',
-              color: method === 'card' ? '#fff' : 'var(--text-secondary)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem',
+              padding: '0.7rem 0.5rem', borderRadius: '9px', border: 'none',
+              background: method === 'paypal' ? '#0070ba' : 'transparent',
+              color: method === 'paypal' ? '#fff' : 'var(--text-secondary)',
               fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
-              transition: 'all 0.2s',
+              transition: 'all 0.2s', whiteSpace: 'nowrap'
             }}
           >
-            <CreditCard size={15} /> Card &amp; Apple/Google Pay
+            <PayPalIcon size={16} /> PayPal
           </button>
 
           <button
             type="button"
             onClick={() => setMethod('crypto')}
             style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
-              padding: '0.65rem 0.5rem', borderRadius: '9px', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem',
+              padding: '0.7rem 0.5rem', borderRadius: '9px', border: 'none',
               background: method === 'crypto' ? 'var(--accent-primary)' : 'transparent',
               color: method === 'crypto' ? '#fff' : 'var(--text-secondary)',
               fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
-              transition: 'all 0.2s',
+              transition: 'all 0.2s', whiteSpace: 'nowrap'
             }}
           >
-            <Coins size={15} /> Crypto &amp; Web3
+            <Coins size={16} /> Crypto &amp; Web3
           </button>
         </div>
 
-        {/* ── CARD / APPLE PAY / STRIPE CHECKOUT ────────────────────────────── */}
-        {method === 'card' ? (
+        {/* ── PAYPAL / PAYPAL.ME CHECKOUT ───────────────────────────────────── */}
+        {method === 'paypal' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center' }}>
-            
-            {/* Features preview */}
             <div style={{
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.06)',
+              background: 'linear-gradient(135deg, rgba(0, 112, 186, 0.08) 0%, rgba(0, 48, 135, 0.12) 100%)',
+              border: '1px solid rgba(0, 112, 186, 0.25)',
               borderRadius: '14px',
               padding: '1.25rem',
               display: 'flex',
               flexDirection: 'column',
-              gap: '0.75rem',
+              gap: '0.85rem',
               textAlign: 'left',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#60a5fa', fontSize: '0.9rem', fontWeight: 600 }}>
-                <Zap size={16} /> Instant Stripe Checkout
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#38bdf8', fontSize: '0.95rem', fontWeight: 700 }}>
+                  <PayPalIcon size={18} /> PayPal.Me Direct
+                </div>
+                <span style={{
+                  padding: '0.2rem 0.55rem', borderRadius: '6px',
+                  background: 'rgba(56, 189, 248, 0.15)',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  fontSize: '0.72rem', fontWeight: 700, color: '#38bdf8',
+                }}>
+                  Verified Recipient
+                </span>
               </div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
-                Pay securely using your preferred payment method:
-              </p>
+
               <div style={{
-                display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.2rem'
+                display: 'flex', alignItems: 'center', gap: '0.6rem',
+                background: 'rgba(0,0,0,0.25)', padding: '0.6rem 0.8rem',
+                borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)'
               }}>
-                {['Apple Pay', 'Google Pay', 'Visa', 'MasterCard', 'Amex', 'Link'].map(item => (
-                  <span key={item} style={{
-                    padding: '0.25rem 0.6rem', borderRadius: '6px',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)',
-                  }}>
-                    {item}
-                  </span>
-                ))}
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Handle:</span>
+                <code style={{ color: '#60a5fa', fontWeight: 700, fontSize: '0.9rem' }}>paypal.me/aramtrustmain</code>
               </div>
+
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
+                Donate seamlessly using your PayPal balance, linked bank account, debit card, or credit card.
+              </p>
             </div>
 
-            {/* Direct Pay Button */}
+            {/* Direct PayPal Button */}
             <a
-              href={STRIPE_PAYMENT_LINK}
+              href={PAYPAL_PAYMENT_LINK}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-primary"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
                 padding: '0.9rem 1.5rem', fontSize: '1rem', fontWeight: 700,
                 textDecoration: 'none',
+                background: 'linear-gradient(135deg, #0070ba 0%, #003087 100%)',
+                color: '#ffffff',
+                borderRadius: '12px',
+                boxShadow: '0 4px 14px rgba(0, 112, 186, 0.35)',
+                transition: 'transform 0.15s, box-shadow 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(0, 112, 186, 0.45)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 112, 186, 0.35)';
               }}
             >
-              Pay with Card / Apple Pay <ExternalLink size={17} />
+              <PayPalIcon size={18} /> Pay via PayPal.Me <ExternalLink size={17} />
             </a>
 
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
               <ShieldCheck size={14} color="#10b981" />
-              <span>PCI-Compliant 256-bit Encrypted Stripe Checkout</span>
+              <span>PayPal Buyer &amp; Donor Protection Enabled</span>
             </div>
           </div>
-        ) : (
-          /* ── CRYPTO & NOWPAYMENTS WIDGET ────────────────────────────────────── */
+        )}
+
+        {/* ── CRYPTO & NOWPAYMENTS WIDGET ────────────────────────────────────── */}
+        {method === 'crypto' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
             <div style={{
               display: 'flex', justifyContent: 'center', alignItems: 'center',
@@ -185,3 +213,5 @@ export default function DonationModal({ isOpen, onClose }) {
     </div>
   );
 }
+
+
