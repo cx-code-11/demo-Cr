@@ -1,13 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { createInvoice, handleWebhook } = require('../controllers/paymentController');
-
-// POST /api/payments/create-invoice
-// Body: { amount: number, donorName: string, donorEmail?: string }
-router.post('/create-invoice', createInvoice);
+const { handleWebhook } = require('../controllers/paymentController');
 
 // POST /api/payments/webhook
-// Raw body (handled in server.js with express.raw middleware)
+// IPN handler — raw body (set up in server.js with express.raw middleware)
 router.post('/webhook', handleWebhook);
 
 module.exports = router;
