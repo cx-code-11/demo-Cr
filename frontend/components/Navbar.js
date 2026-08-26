@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Heart, Smartphone } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import DonationModal from './DonationModal';
 
 export default function Navbar() {
@@ -38,32 +38,15 @@ export default function Navbar() {
             <span>Trust<span className="gradient-text">Aid</span></span>
           </Link>
 
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <Link
-              href="/pos"
-              className="btn btn-secondary"
-              style={{
-                padding: '0.55rem 1.1rem',
-                fontSize: '0.88rem',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-              }}
-            >
-              <Smartphone size={15} color="#38bdf8" />
-              <span>Web POS</span>
-            </Link>
-
-            <button
-              id="donate-btn"
-              onClick={() => setModalOpen(true)}
-              className="btn btn-primary"
-              style={{ padding: '0.55rem 1.3rem', fontSize: '0.88rem' }}
-            >
-              Donate
-            </button>
-          </div>
+          {/* Donate Button */}
+          <button
+            id="donate-btn"
+            onClick={() => setModalOpen(true)}
+            className="btn btn-primary"
+            style={{ padding: '0.6rem 1.5rem', fontSize: '0.95rem' }}
+          >
+            Donate
+          </button>
         </div>
       </nav>
 
