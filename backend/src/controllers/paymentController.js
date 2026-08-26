@@ -3,29 +3,241 @@ const prisma = require('../prismaClient');
 const { processDonationSettlement, calculateSettlement } = require('../services/settlementService');
 
 const IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET;
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+
+// Lazy initialize Stripe if API key is provided
+let stripe = null;
+if (STRIPE_SECRET_KEY && STRIPE_SECRET_KEY !== 'your_stripe_secret_key_here') {
+  stripe = require('stripe')(STRIPE_SECRET_KEY);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/payments/stripe/create-checkout
+// Creates a Stripe Checkout session for Card, Apple Pay, Google Pay, Link, etc.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.createStripeCheckout = async (req, res) => {
+  try {
+    const {
+      amount,
+      currency = 'usd',
+      donorName,
+      donorEmail,
+      frequency = 'ONE_TIME',
+      campaignId,
+      settlementType = 'M0',
+    } = req.body;
+
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+      return res.status(400).json({ error: 'A valid positive donation amount is required.' });
+    }
+    if (!donorName || donorName.trim().length < 2) {
+      return res.status(400).json({ error: 'Donor name is required (minimum 2 characters).' });
+    }
+
+    const usdAmount = parseFloat(Number(amount).toFixed(2));
+    const targetCurrency = currency.toLowerCase();
+
+    // If Stripe key isn't configured, provide clear error
+    if (!stripe) {
+      // Fallback: If in test/demo mode without live Stripe key, create a simulated checkout
+      const donation = await prisma.donation.create({
+        data: {
+          provider: 'STRIPE',
+          donorName: donorName.trim(),
+          donorEmail: donorEmail?.trim() || null,
+          usdAmount,
+          originalAmount: usdAmount,
+          originalCurrency: targetCurrency.toUpperCase(),
+          frequency: frequency.toUpperCase(),
+          settlementType: settlementType.toUpperCase(),
+          paymentStatus: 'WAITING',
+          paymentMethod: 'card',
+          campaignId: campaignId || null,
+        },
+      });
+
+      return res.json({
+        sessionId: `demo_session_${donation.id}`,
+        checkoutUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/thank-you?session_id=demo_${donation.id}`,
+        donationId: donation.id,
+        isSimulated: true,
+      });
+    }
+
+    // 1. Create preliminary donation record
+    const donation = await prisma.donation.create({
+      data: {
+        provider: 'STRIPE',
+        donorName: donorName.trim(),
+        donorEmail: donorEmail?.trim() || null,
+        usdAmount,
+        originalAmount: usdAmount,
+        originalCurrency: targetCurrency.toUpperCase(),
+        frequency: frequency.toUpperCase(),
+        settlementType: settlementType.toUpperCase(),
+        paymentStatus: 'WAITING',
+        campaignId: campaignId || null,
+      },
+    });
+
+    // 2. Build Stripe Checkout Session
+    const isRecurring = frequency.toUpperCase() === 'MONTHLY';
+    const successUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/thank-you?session_id={CHECKOUT_SESSION_ID}&donation_id=${donation.id}`;
+    const cancelUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}?canceled=true`;
+
+    const lineItem = {
+      price_data: {
+        currency: targetCurrency,
+        product_data: {
+          name: isRecurring ? 'Monthly Charity Support — TrustAid' : 'Charity Donation — TrustAid',
+          description: `Donation by ${donorName.trim()}`,
+        },
+        unit_amount: Math.round(usdAmount * 100), // in cents
+        ...(isRecurring ? { recurring: { interval: 'month' } } : {}),
+      },
+      quantity: 1,
+    };
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card', 'link'],
+      mode: isRecurring ? 'subscription' : 'payment',
+      customer_email: donorEmail?.trim() || undefined,
+      client_reference_id: donation.id,
+      line_items: [lineItem],
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: {
+        donationId: donation.id,
+        donorName: donorName.trim(),
+        donorEmail: donorEmail?.trim() || '',
+        settlementType: settlementType.toUpperCase(),
+      },
+    });
+
+    await prisma.donation.update({
+      where: { id: donation.id },
+      data: { stripeSessionId: session.id },
+    });
+
+    return res.status(201).json({
+      sessionId: session.id,
+      checkoutUrl: session.url,
+      donationId: donation.id,
+    });
+  } catch (err) {
+    console.error('[STRIPE CHECKOUT ERROR]', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to initialize Stripe checkout.' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/payments/stripe-webhook
+// Stripe Webhook handler with signature verification
+// ─────────────────────────────────────────────────────────────────────────────
+exports.handleStripeWebhook = async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const rawBody = req.body;
+
+  let event;
+
+  if (STRIPE_WEBHOOK_SECRET && STRIPE_WEBHOOK_SECRET !== 'your_stripe_webhook_secret_here' && stripe) {
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.warn('[STRIPE WEBHOOK] Signature verification failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+  } else {
+    // Development fallback without secret
+    try {
+      event = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      return res.status(400).send('Invalid JSON');
+    }
+  }
+
+  // Acknowledge immediately
+  res.json({ received: true });
+
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object;
+        const donationId = session.client_reference_id || session.metadata?.donationId;
+        const paymentIntentId = session.payment_intent;
+
+        console.log(`[STRIPE WEBHOOK] checkout.session.completed for donationId=${donationId}`);
+
+        let donation = null;
+        if (donationId) {
+          donation = await prisma.donation.findUnique({ where: { id: donationId } });
+        } else if (session.id) {
+          donation = await prisma.donation.findUnique({ where: { stripeSessionId: session.id } });
+        }
+
+        if (donation) {
+          if (donation.paymentStatus === 'FINISHED') {
+            console.log('[STRIPE WEBHOOK] Duplicate webhook event, skipping.');
+            return;
+          }
+
+          const paidAmount = session.amount_total ? session.amount_total / 100 : donation.usdAmount;
+          const currency = (session.currency || donation.originalCurrency || 'USD').toUpperCase();
+
+          const updated = await prisma.donation.update({
+            where: { id: donation.id },
+            data: {
+              paymentStatus: 'FINISHED',
+              paymentMethod: 'card',
+              originalAmount: paidAmount,
+              originalCurrency: currency,
+              usdAmount: paidAmount,
+              stripePaymentIntentId: typeof paymentIntentId === 'string' ? paymentIntentId : undefined,
+              updatedAt: new Date(),
+            },
+          });
+
+          // Auto-trigger M0 or M1 settlement
+          await processDonationSettlement(updated.id);
+        }
+        break;
+      }
+
+      case 'payment_intent.payment_failed': {
+        const intent = event.data.object;
+        console.warn(`[STRIPE WEBHOOK] Payment failed for intent: ${intent.id}`);
+        break;
+      }
+
+      default:
+        // Other event types
+        break;
+    }
+  } catch (err) {
+    console.error('[STRIPE WEBHOOK PROCESSING ERROR]', err.message);
+  }
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/payments/webhook
-// IPN handler — receives payment status updates directly from NOWPayments
-// Body is raw Buffer (for HMAC verification)
+// NOWPayments IPN handler (Crypto, Wallets, Card widget)
 // ─────────────────────────────────────────────────────────────────────────────
 exports.handleWebhook = async (req, res) => {
   try {
-    // ── 1. Get raw body and signature header ──────────────────────────────────
     const rawBody = req.body;
     const receivedSig = req.headers['x-nowpayments-sig'];
 
     if (!receivedSig) {
-      console.warn('[WEBHOOK] Missing x-nowpayments-sig header');
+      console.warn('[NOWPAYMENTS WEBHOOK] Missing x-nowpayments-sig header');
       return res.status(400).json({ error: 'Missing signature header' });
     }
 
-    // ── 2. Verify HMAC-SHA512 signature ───────────────────────────────────────
     let payload;
     try {
       payload = JSON.parse(rawBody.toString('utf8'));
     } catch {
-      console.error('[WEBHOOK] Invalid JSON body');
+      console.error('[NOWPAYMENTS WEBHOOK] Invalid JSON body');
       return res.status(400).json({ error: 'Invalid JSON body' });
     }
 
@@ -37,17 +249,15 @@ exports.handleWebhook = async (req, res) => {
         .digest('hex');
 
       if (expectedSig !== receivedSig) {
-        console.warn('[WEBHOOK] Signature mismatch — request rejected');
+        console.warn('[NOWPAYMENTS WEBHOOK] Signature mismatch — request rejected');
         return res.status(401).json({ error: 'Invalid signature' });
       }
     } else {
-      console.log('[WEBHOOK] IPN_SECRET not set or using default, skipping HMAC validation');
+      console.log('[NOWPAYMENTS WEBHOOK] IPN_SECRET not set or using default, skipping HMAC validation');
     }
 
-    // ── 3. Acknowledge immediately ────────────────────────────────────────────
     res.status(200).json({ received: true });
 
-    // ── 4. Extract payment data ───────────────────────────────────────────────
     const {
       payment_id,
       order_id,
@@ -59,7 +269,7 @@ exports.handleWebhook = async (req, res) => {
       outcome_amount,
     } = payload;
 
-    console.log(`[WEBHOOK] payment_id=${payment_id} order_id=${order_id} status=${payment_status}`);
+    console.log(`[NOWPAYMENTS WEBHOOK] payment_id=${payment_id} order_id=${order_id} status=${payment_status}`);
 
     const statusMap = {
       waiting:        'WAITING',
@@ -82,7 +292,6 @@ exports.handleWebhook = async (req, res) => {
       ? parseFloat(actually_paid) 
       : (pay_amount ? parseFloat(pay_amount) : null);
 
-    // ── 5. Find existing donation by order_id or nowPaymentsId ─────────────────
     let donation = null;
     if (order_id) {
       donation = await prisma.donation.findUnique({
@@ -96,10 +305,9 @@ exports.handleWebhook = async (req, res) => {
       });
     }
 
-    // ── 6. Idempotency / Upsert donation ──────────────────────────────────────
     if (donation) {
       if (donation.paymentStatus === 'FINISHED' && mappedStatus === 'FINISHED') {
-        console.log(`[WEBHOOK] Already FINISHED — skipping duplicate for donation ${donation.id}`);
+        console.log(`[NOWPAYMENTS WEBHOOK] Already FINISHED — skipping duplicate for donation ${donation.id}`);
         return;
       }
 
@@ -116,19 +324,18 @@ exports.handleWebhook = async (req, res) => {
         },
       });
 
-      console.log(`[WEBHOOK] Donation ${updated.id} updated to ${mappedStatus}`);
+      console.log(`[NOWPAYMENTS WEBHOOK] Donation ${updated.id} updated to ${mappedStatus}`);
 
-      // Auto-trigger settlement on successful payment
       if (['FINISHED', 'CONFIRMED'].includes(mappedStatus)) {
         await processDonationSettlement(updated.id);
       }
     } else {
-      // Direct payment from widget without pre-created invoice
       const { fee, net } = calculateSettlement(calculatedUsdAmount, 'M0');
       const isSuccess = ['FINISHED', 'CONFIRMED'].includes(mappedStatus);
 
       const created = await prisma.donation.create({
         data: {
+          provider: 'NOWPAYMENTS',
           donorName: 'Anonymous Donor',
           nowPaymentsId: payment_id ? String(payment_id) : undefined,
           usdAmount: calculatedUsdAmount,
@@ -144,7 +351,7 @@ exports.handleWebhook = async (req, res) => {
         },
       });
 
-      console.log(`[WEBHOOK] New direct donation created from widget: ${created.id} ($${calculatedUsdAmount}) [${mappedStatus}]`);
+      console.log(`[NOWPAYMENTS WEBHOOK] New direct donation: ${created.id} ($${calculatedUsdAmount}) [${mappedStatus}]`);
 
       if (isSuccess) {
         await prisma.settlementLog.create({
@@ -156,13 +363,13 @@ exports.handleWebhook = async (req, res) => {
             amount: calculatedUsdAmount,
             fee,
             netAmount: net,
-            notes: 'Direct widget payment instant M0 settlement.',
+            notes: 'NOWPayments widget direct instant M0 settlement.',
           },
         });
       }
     }
 
   } catch (err) {
-    console.error('[WEBHOOK] Processing error:', err.message);
+    console.error('[NOWPAYMENTS WEBHOOK ERROR]', err.message);
   }
 };

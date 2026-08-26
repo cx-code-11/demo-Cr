@@ -24,30 +24,36 @@ model Campaign {
 model Donation {
   id               String   @id @default(uuid())
 
+  // Provider
+  provider         String   @default("NOWPAYMENTS") // "NOWPAYMENTS" | "STRIPE"
+  frequency        String   @default("ONE_TIME")    // "ONE_TIME" | "MONTHLY"
+
   // Donor info
   donorName        String
   donorEmail       String?
 
-  // NOWPayments identifiers
-  nowPaymentsId    String?  @unique  // payment_id — used for idempotency
-  invoiceId        String?           // NOWPayments invoice_id
+  // Payment identifiers
+  nowPaymentsId          String?  @unique  // NOWPayments payment_id
+  invoiceId              String?           // NOWPayments invoice_id
+  stripeSessionId        String?  @unique  // Stripe checkout session ID
+  stripePaymentIntentId  String?           // Stripe payment intent ID
 
   // Payment amounts
   usdAmount        Float             // amount in USD (gross requested)
   originalAmount   Float?            // amount user actually paid (in their currency)
-  originalCurrency String?           // currency user paid in (btc, eth, usd, etc.)
+  originalCurrency String?           // currency user paid in (btc, eth, usd, eur, gbp, etc.)
 
   // Payment metadata
-  paymentMethod    String?           // e.g. "btc", "eth", "usdtbsc", "card"
+  paymentMethod    String?           // e.g. "card", "apple_pay", "google_pay", "link", "usdt", "btc", "eth"
   paymentStatus    String   @default("WAITING")
   // WAITING | CONFIRMING | CONFIRMED | SENDING | FINISHED | PARTIALLY_PAID | FAILED | EXPIRED | REFUNDED
 
   // Settlement Fund Management (M0 / M1)
-  settlementType         String    @default("M0") // "M0" (Instant) | "M1" (Next Business Day)
-  settlementStatus       String    @default("PENDING") // "PENDING" | "PROCESSING" | "SETTLED" | "FAILED"
-  feeAmount              Float     @default(0) // Gateway / processing fee in USD
-  netSettlementAmount    Float     @default(0) // Net funds available (usdAmount - feeAmount)
-  settledAt              DateTime? // Timestamp when settled
+  settlementType          String    @default("M0") // "M0" (Instant) | "M1" (Next Business Day)
+  settlementStatus        String    @default("PENDING") // "PENDING" | "PROCESSING" | "SETTLED" | "FAILED"
+  feeAmount               Float     @default(0) // Gateway / processing fee in USD
+  netSettlementAmount     Float     @default(0) // Net funds available (usdAmount - feeAmount)
+  settledAt               DateTime? // Timestamp when settled
   estimatedSettlementDate DateTime? // Scheduled settlement date for M1
 
   // Optional campaign link

@@ -15,10 +15,11 @@ app.use(cors({
 }));
 
 // ─── RAW BODY for webhook signature verification ───────────────────────────────
-// Must come BEFORE express.json() and only for the webhook route
+// NOWPayments and Stripe webhook signature checks require raw Buffer payload
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/payments/stripe-webhook', express.raw({ type: 'application/json' }));
 
-// ─── JSON body parser (for all other routes) ──────────────────────────────────
+// ─── JSON body parser (for all other API routes) ──────────────────────────────
 app.use(express.json());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────

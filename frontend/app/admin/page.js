@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   DollarSign, TrendingUp, Clock, CheckCircle,
   XCircle, RefreshCw, ChevronLeft, ChevronRight, AlertCircle,
-  Download, Zap, Calendar, PlayCircle, ShieldCheck, ArrowUpRight
+  Download, Zap, Calendar, PlayCircle, ShieldCheck, CreditCard, Coins
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5005';
@@ -57,6 +57,23 @@ function SettlementTypeBadge({ type }) {
     }}>
       {isM0 ? <Zap size={11} /> : <Calendar size={11} />}
       {isM0 ? 'M0 Instant' : 'M1 Next-Day'}
+    </span>
+  );
+}
+
+function ProviderBadge({ provider }) {
+  const isStripe = provider === 'STRIPE';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+      padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600,
+      color: isStripe ? '#6366f1' : '#f59e0b',
+      background: isStripe ? 'rgba(99,102,241,0.1)' : 'rgba(245,158,11,0.1)',
+      border: `1px solid ${isStripe ? 'rgba(99,102,241,0.25)' : 'rgba(245,158,11,0.25)'}`,
+      textTransform: 'uppercase',
+    }}>
+      {isStripe ? <CreditCard size={10} /> : <Coins size={10} />}
+      {provider || 'NOWPAYMENTS'}
     </span>
   );
 }
@@ -202,11 +219,11 @@ export default function AdminPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#60a5fa', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem' }}>
-              <ShieldCheck size={16} /> Server Fund &amp; Payment Settlements
+              <ShieldCheck size={16} /> Multi-Provider Gateway &amp; Settlement Hub
             </div>
-            <h1 style={{ fontSize: '2.2rem', margin: 0 }}>Admin Fund Management</h1>
+            <h1 style={{ fontSize: '2.2rem', margin: 0 }}>Admin Fund &amp; Donation Center</h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-              Monitor instant M0 and next-business-day M1 payout settlements
+              Real-time monitoring across Stripe Checkout, Apple/Google Pay, NOWPayments, and M0/M1 settlements
             </p>
           </div>
 
@@ -257,7 +274,7 @@ export default function AdminPage() {
               icon={DollarSign} iconColor="#10b981" iconBg="rgba(16,185,129,0.12)"
               label="Net Settled Funds"
               value={`$${Number(settlement.totalNetSettledUSD || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-              sub={`Total Gross: $${Number(settlement.totalGrossRaisedUSD || 0).toFixed(2)}`}
+              sub={`Gross Donations: $${Number(settlement.totalGrossRaisedUSD || 0).toFixed(2)}`}
               badge={<span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700 }}>Settled</span>}
             />
 
@@ -287,9 +304,9 @@ export default function AdminPage() {
 
             <StatCard
               icon={TrendingUp} iconColor="#f472b6" iconBg="rgba(244,114,182,0.12)"
-              label="Gateway Fees Collected"
+              label="Processing Fees"
               value={`$${Number(settlement.totalFeesCollectedUSD || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-              sub="Processing & network fee reserve"
+              sub="Gateway fee reserve"
             />
           </div>
         )}
@@ -305,7 +322,7 @@ export default function AdminPage() {
           }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.15rem' }}>
-                Fund Settlements &amp; Transactions
+                All Gateway Transactions
               </h3>
               <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 Showing {donations.length} of {pagination.total} records
@@ -378,7 +395,7 @@ export default function AdminPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
-                  {['Donor', 'Transaction ID', 'Gross USD', 'Fee', 'Net Settlement', 'Type', 'Settlement Status', 'Payment', 'Date / Settled', 'Action'].map(h => (
+                  {['Donor', 'Gateway / Tx', 'Gross USD', 'Fee', 'Net Settlement', 'Type', 'Settlement Status', 'Payment', 'Frequency', 'Date / Settled', 'Action'].map(h => (
                     <th key={h} style={{
                       padding: '0.85rem 1rem', textAlign: 'left',
                       color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.78rem',
@@ -391,11 +408,11 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={10} style={{ padding: '3.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <tr><td colSpan={11} style={{ padding: '3.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                     Loading transactions...
                   </td></tr>
                 ) : donations.length === 0 ? (
-                  <tr><td colSpan={10} style={{ padding: '3.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <tr><td colSpan={11} style={{ padding: '3.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                     No transactions match the selected criteria.
                   </td></tr>
                 ) : donations.map((d, i) => (
@@ -413,12 +430,15 @@ export default function AdminPage() {
                       {d.donorEmail && <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{d.donorEmail}</div>}
                     </td>
 
-                    {/* Transaction ID */}
+                    {/* Gateway & Tx */}
                     <td style={{ padding: '0.9rem 1rem' }}>
-                      <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                        {d.nowPaymentsId
-                          ? <span title={d.nowPaymentsId}>{String(d.nowPaymentsId).slice(0, 12)}…</span>
-                          : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      <div style={{ marginBottom: '0.2rem' }}>
+                        <ProviderBadge provider={d.provider} />
+                      </div>
+                      <div style={{ fontFamily: 'monospace', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                        {d.nowPaymentsId || d.stripeSessionId || d.stripePaymentIntentId
+                          ? <span title={d.nowPaymentsId || d.stripeSessionId}>{String(d.nowPaymentsId || d.stripeSessionId).slice(0, 14)}…</span>
+                          : <span style={{ color: 'var(--text-muted)' }}>{d.id.slice(0, 8)}…</span>}
                       </div>
                       {d.paymentMethod && (
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
@@ -430,6 +450,11 @@ export default function AdminPage() {
                     {/* Gross USD */}
                     <td style={{ padding: '0.9rem 1rem', fontWeight: 600 }}>
                       ${Number(d.usdAmount || 0).toFixed(2)}
+                      {d.originalCurrency && d.originalCurrency !== 'USD' && (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          ({d.originalAmount} {d.originalCurrency})
+                        </div>
+                      )}
                     </td>
 
                     {/* Fee */}
@@ -455,6 +480,15 @@ export default function AdminPage() {
                     {/* Payment Status */}
                     <td style={{ padding: '0.9rem 1rem' }}>
                       <StatusBadge status={d.paymentStatus} config={STATUS_CONFIG} />
+                    </td>
+
+                    {/* Frequency */}
+                    <td style={{ padding: '0.9rem 1rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      {d.frequency === 'MONTHLY' ? (
+                        <span style={{ color: '#34d399', fontWeight: 600 }}>Monthly</span>
+                      ) : (
+                        'One-time'
+                      )}
                     </td>
 
                     {/* Date / Settled */}
