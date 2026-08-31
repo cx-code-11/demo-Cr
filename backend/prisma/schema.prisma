@@ -37,6 +37,7 @@ model Donation {
   invoiceId              String?           // NOWPayments invoice_id
   stripeSessionId        String?  @unique  // Stripe checkout session ID
   stripePaymentIntentId  String?           // Stripe payment intent ID
+  paypalOrderId          String?  @unique  // PayPal Order ID
 
   // Payment amounts
   usdAmount        Float             // amount in USD (gross requested)

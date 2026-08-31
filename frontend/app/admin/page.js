@@ -63,16 +63,25 @@ function SettlementTypeBadge({ type }) {
 
 function ProviderBadge({ provider }) {
   const isStripe = provider === 'STRIPE';
+  const isPayPal = provider === 'PAYPAL';
+
+  let color, bg, border;
+  if (isStripe) {
+    color = '#6366f1'; bg = 'rgba(99,102,241,0.1)'; border = 'rgba(99,102,241,0.25)';
+  } else if (isPayPal) {
+    color = '#38bdf8'; bg = 'rgba(0,112,186,0.12)'; border = 'rgba(0,112,186,0.3)';
+  } else {
+    color = '#f59e0b'; bg = 'rgba(245,158,11,0.1)'; border = 'rgba(245,158,11,0.25)';
+  }
+
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
       padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600,
-      color: isStripe ? '#6366f1' : '#f59e0b',
-      background: isStripe ? 'rgba(99,102,241,0.1)' : 'rgba(245,158,11,0.1)',
-      border: `1px solid ${isStripe ? 'rgba(99,102,241,0.25)' : 'rgba(245,158,11,0.25)'}`,
+      color, background: bg, border: `1px solid ${border}`,
       textTransform: 'uppercase',
     }}>
-      {isStripe ? <CreditCard size={10} /> : <Coins size={10} />}
+      {isStripe ? <CreditCard size={10} /> : isPayPal ? <span style={{ fontSize: '0.65rem', lineHeight: 1 }}>PP</span> : <Coins size={10} />}
       {provider || 'NOWPAYMENTS'}
     </span>
   );
@@ -436,8 +445,8 @@ export default function AdminPage() {
                         <ProviderBadge provider={d.provider} />
                       </div>
                       <div style={{ fontFamily: 'monospace', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
-                        {d.nowPaymentsId || d.stripeSessionId || d.stripePaymentIntentId
-                          ? <span title={d.nowPaymentsId || d.stripeSessionId}>{String(d.nowPaymentsId || d.stripeSessionId).slice(0, 14)}…</span>
+                        {d.nowPaymentsId || d.stripeSessionId || d.stripePaymentIntentId || d.paypalOrderId
+                          ? <span title={d.nowPaymentsId || d.stripeSessionId || d.paypalOrderId}>{String(d.nowPaymentsId || d.stripeSessionId || d.paypalOrderId).slice(0, 14)}…</span>
                           : <span style={{ color: 'var(--text-muted)' }}>{d.id.slice(0, 8)}…</span>}
                       </div>
                       {d.paymentMethod && (

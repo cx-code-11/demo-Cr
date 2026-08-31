@@ -6,10 +6,48 @@ const IPN_SECRET = process.env.NOWPAYMENTS_IPN_SECRET;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
+const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
+const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
+const PAYPAL_MODE = process.env.PAYPAL_MODE || 'sandbox';
+const PAYPAL_BASE_URL = PAYPAL_MODE === 'live'
+  ? 'https://api-m.paypal.com'
+  : 'https://api-m.sandbox.paypal.com';
+
 // Lazy initialize Stripe if API key is provided
 let stripe = null;
 if (STRIPE_SECRET_KEY && STRIPE_SECRET_KEY !== 'your_stripe_secret_key_here') {
   stripe = require('stripe')(STRIPE_SECRET_KEY);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PayPal: OAuth2 Access Token (cached per process)
+// ─────────────────────────────────────────────────────────────────────────────
+let _paypalToken = null;
+let _paypalTokenExpiry = 0;
+
+async function getPayPalAccessToken() {
+  if (_paypalToken && Date.now() < _paypalTokenExpiry) return _paypalToken;
+
+  const credentials = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
+  const response = await fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials',
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`PayPal auth failed: ${err}`);
+  }
+
+  const data = await response.json();
+  _paypalToken = data.access_token;
+  // Expire 60 seconds before actual expiry for safety
+  _paypalTokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+  return _paypalToken;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,5 +409,196 @@ exports.handleWebhook = async (req, res) => {
 
   } catch (err) {
     console.error('[NOWPAYMENTS WEBHOOK ERROR]', err.message);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/payments/paypal/create-order
+// Creates a PayPal Order and a pending Donation record in the DB.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.createPayPalOrder = async (req, res) => {
+  try {
+    const {
+      amount,
+      currency = 'USD',
+      donorName,
+      donorEmail,
+      frequency = 'ONE_TIME',
+      campaignId,
+      settlementType = 'M0',
+    } = req.body;
+
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+      return res.status(400).json({ error: 'A valid positive donation amount is required.' });
+    }
+    if (!PAYPAL_CLIENT_ID || PAYPAL_CLIENT_ID === 'your_paypal_client_id_here') {
+      return res.status(503).json({ error: 'PayPal is not configured on this server.' });
+    }
+
+    const usdAmount = parseFloat(Number(amount).toFixed(2));
+    const resolvedName = (donorName && donorName.trim().length >= 1) ? donorName.trim() : 'Anonymous Donor';
+
+    // 1. Create preliminary donation record
+    const donation = await prisma.donation.create({
+      data: {
+        provider: 'PAYPAL',
+        donorName: resolvedName,
+        donorEmail: donorEmail?.trim() || null,
+        usdAmount,
+        originalAmount: usdAmount,
+        originalCurrency: currency.toUpperCase(),
+        frequency: frequency.toUpperCase(),
+        settlementType: settlementType.toUpperCase(),
+        paymentStatus: 'WAITING',
+        paymentMethod: 'paypal',
+        campaignId: campaignId || null,
+      },
+    });
+
+    // 2. Get PayPal access token
+    const accessToken = await getPayPalAccessToken();
+
+    // 3. Create PayPal Order via REST API
+    // NOTE: Do NOT include payment_source/experience_context here — that is only
+    // for redirect-based flows. The JS SDK Smart Buttons handle UX on their own.
+    const orderPayload = {
+      intent: 'CAPTURE',
+      purchase_units: [
+        {
+          reference_id: donation.id,
+          description: `Donation by ${resolvedName} via TrustAid`,
+          amount: {
+            currency_code: currency.toUpperCase(),
+            value: usdAmount.toFixed(2),
+          },
+        },
+      ],
+    };
+
+    const ppRes = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'PayPal-Request-Id': donation.id,
+      },
+      body: JSON.stringify(orderPayload),
+    });
+
+    if (!ppRes.ok) {
+      const ppErrText = await ppRes.text();
+      let ppErrMessage = 'Failed to create PayPal order.';
+      try {
+        const ppErrJson = JSON.parse(ppErrText);
+        const detail = ppErrJson.details?.[0];
+        if (detail?.issue === 'PAYEE_ACCOUNT_RESTRICTED') {
+          ppErrMessage = 'PayPal merchant account is not yet verified/active. Please complete account setup at paypal.com.';
+        } else if (ppErrJson.message) {
+          ppErrMessage = ppErrJson.message;
+        }
+        console.error('[PAYPAL CREATE ORDER ERROR]', ppErrText);
+      } catch (_) {
+        console.error('[PAYPAL CREATE ORDER ERROR]', ppErrText);
+      }
+      // Clean up the pending donation record
+      await prisma.donation.delete({ where: { id: donation.id } });
+      return res.status(502).json({ error: ppErrMessage });
+    }
+
+    const ppOrder = await ppRes.json();
+
+    // 4. Store paypal order id on donation
+    await prisma.donation.update({
+      where: { id: donation.id },
+      data: { paypalOrderId: ppOrder.id },
+    });
+
+    console.log(`[PAYPAL] Order created: ${ppOrder.id} for donation ${donation.id}`);
+    return res.status(201).json({ paypalOrderId: ppOrder.id, donationId: donation.id });
+
+  } catch (err) {
+    console.error('[PAYPAL CREATE ORDER ERROR]', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to create PayPal order.' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/payments/paypal/capture-order
+// Captures an approved PayPal Order and finalises the donation.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.capturePayPalOrder = async (req, res) => {
+  try {
+    const { paypalOrderId, donationId } = req.body;
+
+    if (!paypalOrderId) {
+      return res.status(400).json({ error: 'paypalOrderId is required.' });
+    }
+
+    // Get access token
+    const accessToken = await getPayPalAccessToken();
+
+    // Capture the order with PayPal
+    const captureRes = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders/${paypalOrderId}/capture`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const captureData = await captureRes.json();
+
+    if (!captureRes.ok || captureData.status !== 'COMPLETED') {
+      console.error('[PAYPAL CAPTURE ERROR]', JSON.stringify(captureData));
+      return res.status(502).json({ error: 'PayPal capture failed.', details: captureData });
+    }
+
+    // Extract capture details from the response
+    const captureUnit = captureData.purchase_units?.[0];
+    const capture = captureUnit?.payments?.captures?.[0];
+    const capturedAmount = parseFloat(capture?.amount?.value || 0);
+    const capturedCurrency = capture?.amount?.currency_code || 'USD';
+
+    // Find the donation — first by donationId, then by paypalOrderId
+    let donation = null;
+    if (donationId) {
+      donation = await prisma.donation.findUnique({ where: { id: donationId } });
+    }
+    if (!donation) {
+      donation = await prisma.donation.findUnique({ where: { paypalOrderId } });
+    }
+
+    if (!donation) {
+      console.error(`[PAYPAL CAPTURE] Donation not found for order ${paypalOrderId}`);
+      return res.status(404).json({ error: 'Donation record not found.' });
+    }
+
+    if (donation.paymentStatus === 'FINISHED') {
+      console.log(`[PAYPAL CAPTURE] Already FINISHED — skipping duplicate for ${donation.id}`);
+      return res.json({ success: true, donationId: donation.id, alreadyCaptured: true });
+    }
+
+    // Update donation to FINISHED
+    const updated = await prisma.donation.update({
+      where: { id: donation.id },
+      data: {
+        paymentStatus: 'FINISHED',
+        paypalOrderId,
+        originalAmount: capturedAmount || donation.usdAmount,
+        usdAmount: capturedAmount || donation.usdAmount,
+        originalCurrency: capturedCurrency,
+        updatedAt: new Date(),
+      },
+    });
+
+    // Trigger settlement processing
+    await processDonationSettlement(updated.id);
+
+    console.log(`[PAYPAL] Order ${paypalOrderId} captured — Donation ${updated.id} FINISHED. $${capturedAmount}`);
+    return res.json({ success: true, donationId: updated.id });
+
+  } catch (err) {
+    console.error('[PAYPAL CAPTURE ERROR]', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to capture PayPal order.' });
   }
 };

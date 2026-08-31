@@ -180,6 +180,7 @@ exports.exportSettlementsCsv = async (req, res) => {
     const headers = [
       'Transaction ID',
       'NOWPayments ID',
+      'PayPal Order ID',
       'Donor Name',
       'Donor Email',
       'Payment Status',
@@ -198,6 +199,7 @@ exports.exportSettlementsCsv = async (req, res) => {
     const rows = donations.map(d => [
       `"${d.id}"`,
       `"${d.nowPaymentsId || ''}"`,
+      `"${d.paypalOrderId || ''}"`,
       `"${d.donorName.replace(/"/g, '""')}"`,
       `"${d.donorEmail || ''}"`,
       `"${d.paymentStatus}"`,
