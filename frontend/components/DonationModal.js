@@ -208,10 +208,13 @@ function PayPalCheckoutPanel({ onSuccess }) {
       createOrder: async () => {
         setStatus('loading');
         setStatusMsg('Creating order…');
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
         try {
           const res = await fetch(`${BACKEND_URL}/api/payments/paypal/create-order`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
               amount: finalAmount,
               currency,
@@ -221,13 +224,18 @@ function PayPalCheckoutPanel({ onSuccess }) {
               settlementType: 'M0',
             }),
           });
+          clearTimeout(timer);
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Failed to create order');
           setStatus('idle');
           return data.paypalOrderId;
         } catch (err) {
+          clearTimeout(timer);
+          const msg = err.name === 'AbortError'
+            ? 'Request timed out. Please check your connection and try again.'
+            : err.message;
           setStatus('error');
-          setStatusMsg(err.message);
+          setStatusMsg(msg);
           throw err;
         }
       },
@@ -235,19 +243,27 @@ function PayPalCheckoutPanel({ onSuccess }) {
       onApprove: async (data) => {
         setStatus('loading');
         setStatusMsg('Finalising your donation…');
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
         try {
           const res = await fetch(`${BACKEND_URL}/api/payments/paypal/capture-order`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({ paypalOrderId: data.orderID }),
           });
+          clearTimeout(timer);
           const result = await res.json();
           if (!res.ok) throw new Error(result.error || 'Capture failed');
           setStatus('success');
           setTimeout(() => { window.location.href = '/thank-you'; }, 1200);
         } catch (err) {
+          clearTimeout(timer);
+          const msg = err.name === 'AbortError'
+            ? 'Request timed out. Please check your connection and try again.'
+            : err.message;
           setStatus('error');
-          setStatusMsg(err.message);
+          setStatusMsg(msg);
         }
       },
 
