@@ -25,7 +25,7 @@ model Donation {
   id               String   @id @default(uuid())
 
   // Provider
-  provider         String   @default("NOWPAYMENTS") // "NOWPAYMENTS" | "STRIPE"
+  provider         String   @default("NOWPAYMENTS") // "NOWPAYMENTS" | "STRIPE" | "PAYPAL" | "BANXA"
   frequency        String   @default("ONE_TIME")    // "ONE_TIME" | "MONTHLY"
 
   // Donor info
@@ -38,6 +38,9 @@ model Donation {
   stripeSessionId        String?  @unique  // Stripe checkout session ID
   stripePaymentIntentId  String?           // Stripe payment intent ID
   paypalOrderId          String?  @unique  // PayPal Order ID
+  banxaOrderId           String?  @unique  // Banxa Order ID
+  banxaCheckoutUrl       String?           // Banxa hosted checkout redirect URL
+  walletAddress          String?           // Destination crypto wallet address
 
   // Payment amounts
   usdAmount        Float             // amount in USD (gross requested)

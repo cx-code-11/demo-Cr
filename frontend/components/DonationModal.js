@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  X, Coins, Heart, Loader2,
+  X, Coins, Heart, Loader2, CreditCard,
   ShieldCheck, CheckCircle2, AlertCircle, ChevronDown,
 } from 'lucide-react';
 
@@ -89,7 +89,7 @@ export default function DonationModal({ isOpen, onClose }) {
 
         {/* Tabs */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem',
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem',
           background: 'rgba(255,255,255,0.03)', padding: '0.3rem',
           borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)',
         }}>
@@ -98,9 +98,19 @@ export default function DonationModal({ isOpen, onClose }) {
             padding: '0.7rem 0.5rem', borderRadius: '9px', border: 'none',
             background: method === 'paypal' ? '#0070ba' : 'transparent',
             color: method === 'paypal' ? '#fff' : 'var(--text-secondary)',
-            fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s',
+            fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.2s',
           }}>
-            <PayPalIcon size={16} /> PayPal
+            <PayPalIcon size={15} /> PayPal
+          </button>
+
+          <button type="button" onClick={() => setMethod('card')} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem',
+            padding: '0.7rem 0.5rem', borderRadius: '9px', border: 'none',
+            background: method === 'card' ? '#10b981' : 'transparent',
+            color: method === 'card' ? '#fff' : 'var(--text-secondary)',
+            fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.2s',
+          }}>
+            <CreditCard size={15} /> Card
           </button>
 
           <button type="button" onClick={() => setMethod('crypto')} style={{
@@ -108,14 +118,15 @@ export default function DonationModal({ isOpen, onClose }) {
             padding: '0.7rem 0.5rem', borderRadius: '9px', border: 'none',
             background: method === 'crypto' ? 'var(--accent-primary)' : 'transparent',
             color: method === 'crypto' ? '#fff' : 'var(--text-secondary)',
-            fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s',
+            fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.2s',
           }}>
-            <Coins size={16} /> Crypto &amp; Web3
+            <Coins size={15} /> Crypto
           </button>
         </div>
 
         {/* Panels */}
         {method === 'paypal' && <PayPalCheckoutPanel onSuccess={onClose} />}
+        {method === 'card'   && <BanxaCheckoutPanel  onSuccess={onClose} />}
 
         {method === 'crypto' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
@@ -471,6 +482,194 @@ function PayPalCheckoutPanel({ onSuccess }) {
       </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ── Banxa Card Checkout Panel ────────────────────────────────────────────────
+function BanxaCheckoutPanel() {
+  const [amount, setAmount]         = useState(25);
+  const [customAmt, setCustomAmt]   = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+  const [currency, setCurrency]     = useState('USD');
+  const [donorName, setDonorName]   = useState('');
+  const [donorEmail, setDonorEmail] = useState('');
+  const [status, setStatus]         = useState('idle');
+  const [statusMsg, setStatusMsg]   = useState('');
+
+  const finalAmount = showCustom ? parseFloat(customAmt) || 0 : amount;
+  const isValid     = finalAmount >= 1;
+
+  const handlePay = async () => {
+    if (!isValid) {
+      setStatus('error');
+      setStatusMsg('Please enter an amount of at least $1.');
+      return;
+    }
+    setStatus('loading');
+    setStatusMsg('Creating your order…');
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/payments/banxa/create-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          amount: finalAmount,
+          currency,
+          donorName:  donorName.trim()  || 'Anonymous Donor',
+          donorEmail: donorEmail.trim() || undefined,
+          settlementType: 'M0',
+        }),
+      });
+      clearTimeout(timer);
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Failed to create order.');
+      if (!data.checkoutUrl) throw new Error('No checkout URL received from server.');
+
+      setStatus('success');
+      setStatusMsg('Redirecting to secure checkout…');
+      setTimeout(() => { window.location.href = data.checkoutUrl; }, 800);
+
+    } catch (err) {
+      clearTimeout(timer);
+      const msg = err.name === 'AbortError'
+        ? 'Request timed out. Please try again.'
+        : err.message;
+      setStatus('error');
+      setStatusMsg(msg);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+
+      {/* Amount + Currency */}
+      <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: '0.5rem' }}>
+            Donation Amount
+          </label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {PRESET_AMOUNTS.map(p => (
+              <button key={p} type="button"
+                onClick={() => { setAmount(p); setShowCustom(false); setCustomAmt(''); }}
+                style={{
+                  padding: '0.45rem 0.9rem', borderRadius: '8px', border: '1px solid',
+                  borderColor: !showCustom && amount === p ? '#10b981' : 'rgba(255,255,255,0.1)',
+                  background: !showCustom && amount === p ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.03)',
+                  color: !showCustom && amount === p ? '#10b981' : 'var(--text-secondary)',
+                  fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.18s',
+                }}>
+                ${p}
+              </button>
+            ))}
+            <button type="button"
+              onClick={() => { setShowCustom(true); setAmount(0); }}
+              style={{
+                padding: '0.45rem 0.9rem', borderRadius: '8px', border: '1px solid',
+                borderColor: showCustom ? '#10b981' : 'rgba(255,255,255,0.1)',
+                background: showCustom ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.03)',
+                color: showCustom ? '#10b981' : 'var(--text-secondary)',
+                fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.18s',
+              }}>
+              Custom
+            </button>
+          </div>
+          {showCustom && (
+            <input
+              type="number" min="1" placeholder="Enter amount"
+              value={customAmt} onChange={e => setCustomAmt(e.target.value)}
+              style={{
+                marginTop: '0.5rem', width: '100%', padding: '0.55rem 0.8rem',
+                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.9rem', boxSizing: 'border-box',
+              }}
+            />
+          )}
+        </div>
+
+        {/* Currency */}
+        <div style={{ minWidth: '130px' }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: '0.5rem' }}>
+            Currency
+          </label>
+          <div style={{ position: 'relative' }}>
+            <select value={currency} onChange={e => setCurrency(e.target.value)}
+              style={{
+                width: '100%', padding: '0.55rem 2rem 0.55rem 0.75rem',
+                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.82rem',
+                cursor: 'pointer', appearance: 'none',
+              }}>
+              {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+            </select>
+            <ChevronDown size={14} style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Donor info */}
+      <div>
+        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: '0.5rem' }}>
+          Your Details <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional)</span>
+        </label>
+        <input type="text" placeholder="Full Name (optional)" value={donorName}
+          onChange={e => setDonorName(e.target.value)}
+          style={{ width: '100%', padding: '0.6rem 0.8rem', marginBottom: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.88rem', boxSizing: 'border-box' }}
+        />
+        <input type="email" placeholder="Email Address (optional)" value={donorEmail}
+          onChange={e => setDonorEmail(e.target.value)}
+          style={{ width: '100%', padding: '0.6rem 0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.88rem', boxSizing: 'border-box' }}
+        />
+      </div>
+
+      {/* Summary */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>One-time donation</span>
+        <span style={{ fontWeight: 800, fontSize: '1rem', color: '#10b981' }}>
+          {CURRENCIES.find(c => c.code === currency)?.symbol}{isValid ? finalAmount.toFixed(2) : '0.00'} {currency}
+        </span>
+      </div>
+
+      {/* Status */}
+      {status === 'error' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f87171', fontSize: '0.82rem' }}>
+          <AlertCircle size={14} /> {statusMsg}
+        </div>
+      )}
+      {status === 'success' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontSize: '0.82rem' }}>
+          <CheckCircle2 size={14} /> {statusMsg}
+        </div>
+      )}
+
+      {/* Pay Button */}
+      <button type="button" onClick={handlePay}
+        disabled={status === 'loading' || !isValid}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+          width: '100%', padding: '0.85rem',
+          background: status === 'loading' || !isValid ? 'rgba(16,185,129,0.4)' : '#10b981',
+          border: 'none', borderRadius: '10px',
+          color: '#fff', fontWeight: 800, fontSize: '0.95rem',
+          cursor: status === 'loading' || !isValid ? 'not-allowed' : 'pointer',
+          transition: 'all 0.2s',
+        }}>
+        {status === 'loading'
+          ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Processing…</>
+          : <><CreditCard size={16} /> Pay with Card</>}
+      </button>
+
+      {/* Trust badge */}
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+        <ShieldCheck size={14} color="#10b981" />
+        <span>Secured by Banxa · Visa &amp; Mastercard Accepted</span>
+      </div>
     </div>
   );
 }

@@ -3,7 +3,8 @@ const cors = require('cors');
 require('dotenv').config();
 
 const paymentRoutes = require('./routes/paymentRoutes');
-const adminRoutes = require('./routes/adminRoutes');
+const adminRoutes   = require('./routes/adminRoutes');
+const banxaRoutes   = require('./routes/banxaRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5005;
@@ -18,12 +19,19 @@ app.use(cors({
 // NOWPayments and Stripe webhook signature checks require raw Buffer payload
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use('/api/payments/stripe-webhook', express.raw({ type: 'application/json' }));
+// Banxa webhook — capture raw body for HMAC-SHA256 signature verification
+app.use('/api/payments/banxa/webhook', (req, res, next) => {
+  let data = '';
+  req.on('data', chunk => { data += chunk; });
+  req.on('end', () => { req.rawBody = data; next(); });
+});
 
 // ─── JSON body parser (for all other API routes) ──────────────────────────────
 app.use(express.json());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/payments', paymentRoutes);
+app.use('/api/payments/banxa', banxaRoutes);
 app.use('/api/admin', adminRoutes);
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
